@@ -16,7 +16,7 @@ This dataset consists of 583 samples from patients (and some non-patients), with
 
 ### Reading the Data:
 ```{r}
-df <- read.csv("/users/ali/Desktop/indian_liver_patient.csv")
+df <- read.csv("./indian_liver_patient.csv")
 ```
 
 ### Structure of the Data:
