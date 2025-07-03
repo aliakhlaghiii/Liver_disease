@@ -1,0 +1,762 @@
+---
+title: "R_assignment_Ali"
+Course: "Programming_IV"
+---
+Initial Introduction to the Dataset: Indian Liver Patient:
+
+This dataset consists of 583 samples from patients (and some non-patients), with recorded biochemical features of their blood. Key columns include:
+
+1- Age: The age of the patient
+2- Gender: The gender
+3- Total_Bilirubin, Direct_Bilirubin: Levels of total and direct bilirubin
+4- Alkaline_Phosphotase, Alamine_Aminotransferase, Aspartate_Aminotransferase: Liver enzymes
+5- Total_Protiens, Albumin, Albumin_and_Globulin_Ratio: Protein-related indicators
+6- Dataset: Class label (1 = liver disease, 2 = no liver disease)
+
+
+### Reading the Data:
+```{r}
+df <- read.csv("/users/ali/Desktop/indian_liver_patient.csv")
+```
+
+### Structure of the Data:
+```{r}
+str(df)
+```
+### gender distribution
+Q: What is the gender distribution in the dataset?
+```{r}
+ggplot(df, aes(x = Gender, fill = Gender)) +
+  geom_bar() +
+  scale_fill_manual(values = c("Male" = "skyblue", "Female" = "pink")) +
+  labs(title = "Gender Distribution",
+       x = "Gender",
+       y = "Count") +
+  theme_minimal()
+```
+### Histogram of Age
+```{r}
+# Visualizing age distribution
+library(ggplot2)
+ggplot(df, aes(x = Age)) +
+  geom_histogram(binwidth = 5, fill = "tomato", color = "black") +
+  labs(title = "Age Distribution of Patients", x = "Age", y = "Frequency")
+```
+
+### Handling Missing Values:
+```{r}
+colSums(is.na(df))
+```
+As we can see, We don't have any missing values in this data set, except for 4 records in the 'Albumin_and_Globulin_Ratio' feature. 4 samples out of 583 samples are not too significant, so we can remove them:
+
+```{r}
+# remove the rows with missing values
+df <- na.omit(df) # instead of this command we can use drop_na but I wanted to try this command
+colSums(is.na(df))
+```
+rest of data inspection:
+```{r}
+library(ggplot2)
+```
+
+Q: How many patients have liver disease (Case) versus those who do not (Control)?
+```{r}
+# Convert Dataset to a factor with labels: 1 = Case, 2 = Control
+df$Group <- factor(df$Dataset, levels = c(1, 2), labels = c("Case", "Control"))
+
+# Bar plot with different colors for Case and Control
+ggplot(df, aes(x = Group, fill = Group)) +
+  geom_bar() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = "Number of Patients With and Without Liver Disease",
+       x = "Group (Case = Disease, Control = No Disease)",
+       y = "Count") +
+  theme_minimal()
+```
+Q: Descriptive Statistics for each group separately to find out whether the distribution of blood variables in patients differs from that of healthy individuals provides a background for future statistical tests:
+
+```{r group_barplot}
+library(dplyr)
+```
+
+```{r}
+# Select only numeric columns
+numeric_columns <- df %>%
+  select(where(is.numeric))
+
+# Add the group info
+numeric_columns$Group <- df$Group
+
+# Summarize statistics for each group
+numeric_summary <- numeric_columns %>%
+  group_by(Group) %>%
+  summarise(across(.cols = everything(),
+                   .fns = list(mean = mean,
+                               median = median,
+                               min = min,
+                               max = max,
+                               IQR = IQR),
+                   .names = "{.col}_{.fn}"))
+
+# View the summary
+print(numeric_summary)
+```
+
+checking normality to find out some significant differences in the future:
+I used Shapiro_wilk method for checking the normality:
+
+```{r}
+# Create list of numeric features
+features <- c("Total_Bilirubin", "Direct_Bilirubin", "Alkaline_Phosphotase",
+              "Alamine_Aminotransferase", "Aspartate_Aminotransferase",
+              "Total_Protiens", "Albumin", "Albumin_and_Globulin_Ratio")
+
+# Create empty list to store results
+normality_results <- list()
+
+# Loop through each variable and test normality in each group
+for (var in features) {
+  group1 <- df[df$Group == "Case", var]
+  group2 <- df[df$Group == "Control", var]
+  
+  result1 <- shapiro.test(group1)
+  result2 <- shapiro.test(group2)
+  
+  normality_results[[var]] <- data.frame(
+    Variable = var,
+    Group = c("Case", "Control"),
+    Shapiro_p = c(result1$p.value, result2$p.value)
+  )
+}
+
+# Combine all into one data frame
+normality_df <- do.call(rbind, normality_results)
+
+# View result
+print(normality_df)
+```
+
+Almost all features in both the Case and Control groups have very small p-values which means that the data distribution is significantly different from normality.
+
+Q: Is there any significant difference in Total Bilirubin levels between liver disease patients and healthy individuals?
+
+```{r}
+# Create an empty data frame to store results
+wilcox_results <- data.frame()
+
+# Loop through each variable
+for (var in features) {
+  case_vals <- df[df$Group == "Case", var]
+  control_vals <- df[df$Group == "Control", var]
+  
+  test_result <- wilcox.test(case_vals, control_vals, exact = FALSE)
+  # Store results(I used rbind to make a cleaned table of outcomes)
+  wilcox_results <- rbind(wilcox_results, data.frame(
+    Variable = var,
+    U_statistic = test_result$statistic,
+    p_value = test_result$p.value,
+    Median_Case = median(case_vals, na.rm = TRUE),
+    Median_Control = median(control_vals, na.rm = TRUE)
+  ))
+}
+
+# View the result
+print(wilcox_results)
+```
+A: Yes, the difference is statistically significant (p < 0.05).
+
+
+Q: Chi-Square Test: Is Gender Associated with Liver Disease?
+```{r}
+# Create a contingency table
+gender_table <- table(df$Gender, df$Group)
+
+# Perform Chi-squared test
+chi_result <- chisq.test(gender_table)
+print(chi_result)
+```
+A: The Chi-square test showed no statistically significant association between gender and liver disease status (p_value = 0.064). Therefore, we fail to reject the null hypothesis. However, the p-value being close to the 0.05 threshold suggests a possible trend that might warrant further investigation with a larger sample size."
+
+### comparing all the features between two groups with plots or
+Q: Is there a statistically significant difference in all features levels between Case and Control groups?
+
+```{r}
+p <- wilcox.test(df$Total_Bilirubin ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Total_Bilirubin, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Total Bilirubin by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "Total Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+
+```{r}
+p <- wilcox.test(df$Direct_Bilirubin ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Direct_Bilirubin, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Direct Bilirubin by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "Direct Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+
+```{r}
+p <- wilcox.test(df$Alkaline_Phosphotase ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Alkaline_Phosphotase, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Alkaline Phosphotase by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "Alkaline Phosphotase (U/L)") +
+  theme_minimal()
+```
+
+```{r}
+p <- wilcox.test(df$Alamine_Aminotransferase ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Alamine_Aminotransferase, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Alamine Aminotransferase (ALT) by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "ALT (U/L)") +
+  theme_minimal()
+```
+```{r}
+p <- wilcox.test(df$Aspartate_Aminotransferase ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Aspartate_Aminotransferase, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Aspartate Aminotransferase (AST) by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "AST (U/L)") +
+  theme_minimal()
+```
+
+```{r}
+p <- wilcox.test(df$Total_Protiens ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Total_Protiens, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Total Proteins by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "Total Proteins (g/dL)") +
+  theme_minimal()
+```
+```{r boxplot_total_protein}
+p <- wilcox.test(df$Albumin ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Albumin, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Albumin by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "Albumin (g/dL)") +
+  theme_minimal()
+```
+```{r boxplot_albumin}
+p <- wilcox.test(df$Albumin_and_Globulin_Ratio ~ df$Group)$p.value
+sig <- ifelse(p < 0.05, "Significant", "Not Significant")
+
+ggplot(df, aes(x = Group, y = Albumin_and_Globulin_Ratio, fill = Group)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Case" = "red", "Control" = "green")) +
+  labs(title = paste("Albumin/Globulin Ratio by Group (", sig, ")"),
+       subtitle = paste("Wilcoxon p-value =", signif(p, 3)),
+       x = "Group", y = "A/G Ratio") +
+  theme_minimal()
+```
+A: As we can see, there is significant difference between the features of two groups except Total protein (p_value = 0.44)
+
+
+
+Now that we have analyzed the differences between patients and healthy individuals, it's time to explore potential correlations within the data.
+Some variables are likely to be associated with Total Bilirubin.
+Q: Can Total Bilirubin significantly predict Alkaline Phosphotase levels?
+
+```{r}
+# Linear regression: Total Bilirubin ~ Alkaline Phosphotase
+model_alp <- lm(Total_Bilirubin ~ Alkaline_Phosphotase, data = df)
+r2_alp <- summary(model_alp)$r.squared
+p_alp <- summary(model_alp)$coefficients[2, 4]
+sig_alp <- ifelse(p_alp < 0.05, "Significant", "Not Significant")
+
+# Regression plot
+ggplot(df, aes(x = Alkaline_Phosphotase, y = Total_Bilirubin)) +
+  geom_point(alpha = 0.6, color = "purple") +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(title = paste("Regression: ALP vs Total Bilirubin (", sig_alp, ")", sep = ""),
+       subtitle = paste("R2 =", round(r2_alp, 3), " | p =", signif(p_alp, 3)),
+       x = "Alkaline Phosphotase (U/L)",
+       y = "Total Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+A: A statistically significant positive association exists between ALP and Total Bilirubin. The relationship is weak (R2 = 4.3%), but higher ALP levels are generally associated with higher Bilirubin levels.
+
+
+Q: Is there a relationship(correlation) between age and total bilirubin levels?
+```{r}
+cor_test_result <- cor.test(df$Age, df$Total_Bilirubin, method = "spearman")
+print(cor_test_result)
+```
+A: There is a statistically significant but weak positive correlation between Age and Total Bilirubin levels (Spearman’s rho = 0.1135, p = 0.006).
+As age increases, Total Bilirubin levels tend to increase slightly, but the relationship is weak. I also generated a plot to ensure:
+```{r}
+ggplot(df, aes(x = Age, y = Total_Bilirubin)) +
+  geom_point() +
+  geom_smooth(method = 'lm')+
+  labs(title = "Age vs Total Bilirubin",
+       x = expression("Age (years)"),
+       y = expression("Total~Bilirubin~(mg/dL)"))
+```
+A: There does not appear to be a clear linear or non-linear relationship between age and total bilirubin based on this scatter plot. Further statistical analysis (e.g., correlation or regression) would be needed to confirm this observation.
+
+
+
+Q: Is there a significant linear relationship between AST levels and total bilirubin in patients?
+
+```{r}
+# Fit a linear regression model between AST and Total Bilirubin
+model_ast <- lm(Total_Bilirubin ~ Aspartate_Aminotransferase, data = df)
+
+# Extract R-squared and p-value from the model summary
+r2_ast <- summary(model_ast)$r.squared
+p_ast <- summary(model_ast)$coefficients[2,4]
+
+# Plot the regression line and data points
+ggplot(df, aes(x = Aspartate_Aminotransferase, y = Total_Bilirubin)) +
+  geom_point(alpha = 0.6, color = "darkblue") +  # scatter plot
+  geom_smooth(method = "lm", se = TRUE, color = "red") +  # regression line with confidence interval
+  labs(title = "Regression: AST vs Total Bilirubin",
+       subtitle = paste("R2 =", round(r2_ast, 3), " | p =", signif(p_ast, 3)),
+       x = "AST (U/L)",
+       y = "Total Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+A: There is a statistically significant positive relationship between AST and Total Bilirubin. As AST increases, Total Bilirubin tends to increase slightly. However, the R2 value indicates that AST explains only about 5.7% of the variation in Total Bilirubin, which is weak in practical terms.
+
+
+
+Q: Is there a significant linear relationship between total protein levels and total bilirubin?
+
+```{r}
+# Linear regression: Total Bilirubin ~ Total Proteins
+model_prot <- lm(Total_Bilirubin ~ Total_Protiens, data = df)
+r2_prot <- summary(model_prot)$r.squared
+p_prot <- summary(model_prot)$coefficients[2, 4]
+sig_prot <- ifelse(p_prot < 0.05, "Significant", "Not Significant")
+
+# Regression plot
+ggplot(df, aes(x = Total_Protiens, y = Total_Bilirubin)) +
+  geom_point(alpha = 0.6, color = "brown") +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(title = paste("Regression: Total Proteins vs Total Bilirubin (", sig_prot, ")", sep = ""),
+       subtitle = paste("R2 =", round(r2_prot, 3), " | p =", signif(p_prot, 3)),
+       x = "Total Proteins (g/dL)",
+       y = "Total Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+A:
+- The scatter points are widely spread horizontally, but vertically clustered around the same bilirubin range.
+- The regression line is almost flat, confirming there's no trend.
+- R2 = 0 shows that total protein is not a predictor for total bilirubin.
+- High p-value supports the lack of association.
+
+
+Q: Is there a significant linear relationship between the Albumin/Globulin (A/G) ratio and total bilirubin levels?
+
+```{r}
+# Linear regression: Total Bilirubin ~ Albumin/Globulin Ratio
+model_ag <- lm(Total_Bilirubin ~ Albumin_and_Globulin_Ratio, data = df)
+r2_ag <- summary(model_ag)$r.squared
+p_ag <- summary(model_ag)$coefficients[2, 4]
+sig_ag <- ifelse(p_ag < 0.05, "Significant", "Not Significant")
+
+# Regression plot
+ggplot(df, aes(x = Albumin_and_Globulin_Ratio, y = Total_Bilirubin)) +
+  geom_point(alpha = 0.6, color = "darkred") +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(title = paste("Regression: A/G Ratio vs Total Bilirubin (", sig_ag, ")", sep = ""),
+       subtitle = paste("R2 =", round(r2_ag, 3), " | p =", signif(p_ag, 3)),
+       x = "Albumin/Globulin Ratio",
+       y = "Total Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+A: The Albumin/Globulin Ratio is not a statistically significant predictor of Total Bilirubin levels in this dataset. The relationship appears weak and not meaningful in a clinical or statistical sense.
+
+
+Q: Do liver-related biochemical markers significantly differ between patients with liver disease and healthy individuals?
+Since the variables are not normally distributed (based on previous Shapiro tests), we use the Kruskal-Wallis test, which is a non-parametric alternative to ANOVA.
+
+```{r}
+# Perform Kruskal-Wallis tests for all relevant variables based on liver disease status
+kruskal.test(Alkaline_Phosphotase ~ factor(Dataset), data = df)
+kruskal.test(Alamine_Aminotransferase ~ factor(Dataset), data = df)
+kruskal.test(Aspartate_Aminotransferase ~ factor(Dataset), data = df)
+kruskal.test(Albumin ~ factor(Dataset), data = df)
+kruskal.test(Albumin_and_Globulin_Ratio ~ factor(Dataset), data = df)
+kruskal.test(Total_Protiens ~ factor(Dataset), data = df)
+```
+
+A: Among liver function biomarkers, Alkaline Phosphatase, ALT, AST, Albumin, and the A/G Ratio show statistically significant differences between diseased and healthy individuals, suggesting they are impacted by liver disease. Only Total Proteins do not exhibit a significant difference.
+
+
+Q: Do liver biomarkers differ significantly between males and females?
+```{r}
+# Convert Gender to factor
+df$Gender <- factor(df$Gender)
+
+# Kruskal-Wallis test for each liver-related variable by Gender
+kruskal.test(Alkaline_Phosphotase ~ Gender, data = df)  
+kruskal.test(Alamine_Aminotransferase ~ Gender, data = df)
+kruskal.test(Aspartate_Aminotransferase ~ Gender, data = df)
+kruskal.test(Albumin ~ Gender, data = df)
+kruskal.test(Total_Protiens ~ Gender, data = df)
+```
+
+A:
+- ALT and AST levels show very strong gender differences.
+- Albumin and Total Proteins show statistically significant but smaller differences.
+- Alkaline Phosphatase does not differ significantly by gender (p ≈ 0.064).
+
+
+
+Q: Are there differences in liver biomarkers across different age groups?
+```{r}
+# Create Age Groups (bins of 10 years)
+df$AgeGroup <- cut(df$Age,
+                   breaks = c(0, 30, 40, 50, 60, 70, 80, 100),
+                   labels = c("≤30", "31–40", "41–50", "51–60", "61–70", "71–80", ">80"),
+                   right = TRUE)
+
+# Kruskal-Wallis test for each liver-related variable by AgeGroup
+kruskal.test(Alkaline_Phosphotase ~ AgeGroup, data = df)  
+kruskal.test(Albumin ~ AgeGroup, data = df)              
+kruskal.test(Total_Protiens ~ AgeGroup, data = df)       
+```
+A: 
+- Albumin shows strong age-related variation. This could reflect physiological or disease-related changes with age.
+- Total Proteins also vary significantly, though less strongly.
+- Alkaline Phosphatase, surprisingly, does not vary significantly by age group in this dataset.
+
+
+
+Q: Can we predict the level of Total Bilirubin using a combination of multiple liver biomarkers?
+```{r}
+# Fit a multiple linear regression model to predict Total Bilirubin
+multi_model <- lm(Total_Bilirubin ~ Alkaline_Phosphotase +
+                    Alamine_Aminotransferase +
+                    Aspartate_Aminotransferase +
+                    Albumin +
+                    Albumin_and_Globulin_Ratio,
+                  data = df)
+
+# View model summary
+summary(multi_model)
+```
+A:
+- The model shows that Alkaline Phosphatase and Albumin are significant predictors of total bilirubin.
+- ALT, AST, and A/G Ratio are not significant in the presence of other variables.
+- The predictive power is weak (R² = 12.2%), meaning there are likely other important predictors not included in the model.
+- This model is statistically valid but not strong for prediction.
+
+
+
+Q: Do liver enzyme levels differ significantly between males and females?
+```{r}
+# Convert Gender to factor
+df$Gender <- factor(df$Gender)
+
+# 1. ALP Comparison by Gender
+wilcox.test(Alkaline_Phosphotase ~ Gender, data = df)
+
+# 2. ALT Comparison by Gender
+wilcox.test(Alamine_Aminotransferase ~ Gender, data = df)
+
+# 3. AST Comparison by Gender
+wilcox.test(Aspartate_Aminotransferase ~ Gender, data = df)
+
+# Boxplot for visualizing enzyme differences by Gender
+library(ggplot2)
+library(tidyr)
+
+# Reshape data to long format for faceted plotting
+df_long <- df %>%
+  pivot_longer(cols = c(Alkaline_Phosphotase, Alamine_Aminotransferase, Aspartate_Aminotransferase),
+               names_to = "Enzyme", values_to = "Value")
+
+ggplot(df_long, aes(x = Gender, y = Value, fill = Gender)) +
+  geom_boxplot(alpha = 0.7) +
+  facet_wrap(~Enzyme, scales = "free") +
+  labs(title = "Comparison of Liver Enzymes by Gender",
+       y = "Enzyme Level (U/L)") +
+  theme_minimal()
+```
+A:
+- ALT and AST levels are clearly higher in males, both visually and statistically.
+- ALP shows no strong visual or statistical difference between genders.
+
+Q: Which variables are strongly correlated with each other?
+```{r}
+library(corrplot)
+```
+
+
+
+Q: What are the correlations among numeric clinical features after removing missing values?
+```{r}
+# Draw a clean and readable heatmap
+corrplot(cor_matrix,
+         method = "color",        # Color instead of circles
+         type = "upper",          # Only upper triangle
+         tl.col = "black",        # Text color
+         tl.srt = 45,             # Label rotation
+         addCoef.col = "black",   # Show coefficients on each cell
+         number.cex = 0.7,        # Coefficient size
+         tl.cex = 0.8,            # Text label size
+         mar = c(0, 0, 2, 0),     # Margins (top adjusted)
+         title = "Correlation Heatmap of Numeric Features",
+         diag = FALSE)            # Don’t display diagonal
+```
+A:
+- Strong correlations confirm expected clinical relationships (e.g., ALT–AST, Bilirubin–Direct Bilirubin).
+- No evidence of severe multicollinearity (none are ~1 except Bilirubin pair).
+
+
+Q: Do patterns in liver biomarkers differ across gender or age?
+```{r}
+ggplot(df, aes(x = Aspartate_Aminotransferase, y = Total_Bilirubin)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  facet_wrap(~ Gender) +
+  labs(title = "AST vs Total Bilirubin by Gender",
+       x = "AST (U/L)",
+       y = "Total Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+A: There is a gender-based difference in how AST relates to total bilirubin. The association appears stronger in females than in males. This suggests that gender may act as a moderating factor in the AST–bilirubin relationship, and could be considered in predictive modeling or clinical interpretation.
+
+
+
+Q: Does the relationship between Albumin and Total Bilirubin differ across age groups?
+```{r facet_ast_bilirubin_gender}
+# Create age groups
+df$Age_Group <- cut(df$Age,
+                    breaks = c(0, 30, 50, 70, 100),
+                    labels = c("<=30", "31-50", "51-70", ">70"))
+
+# Plot with facet by age group
+ggplot(df, aes(x = Albumin, y = Total_Bilirubin)) +
+  geom_point(alpha = 0.6, color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "darkred") +
+  facet_wrap(~ Age_Group) +
+  labs(title = "Albumin vs Total Bilirubin by Age Group",
+       x = "Albumin (g/dL)",
+       y = "Total Bilirubin (mg/dL)") +
+  theme_minimal()
+```
+A: There is a consistently negative relationship between albumin and total bilirubin across all age groups, but the strength of this relationship is clearest in middle-aged adults (31–70). In younger and older patients, the pattern is less pronounced, possibly due to smaller sample sizes or greater biological variability.
+
+
+
+
+Q: Can we predict liver disease status based on blood test results using logistic regression?
+```{r}
+library(caTools)
+
+# First, convert Dataset to a binary label: 1 = liver disease, 0 = healthy
+df$Label <- ifelse(df$Dataset == 1, 1, 0)
+
+# Now you can optionally remove the original Dataset column
+df$Dataset <- NULL
+
+# Split the data: 70% train, 30% test
+set.seed(123)
+split <- sample.split(df$Label, SplitRatio = 0.7)
+train <- subset(df, split == TRUE)
+test <- subset(df, split == FALSE)
+```
+
+```{r}
+# Fit logistic regression model using common features
+logit_model <- glm(Label ~ Age + Gender + Total_Bilirubin + Direct_Bilirubin +
+                     Alkaline_Phosphotase + Alamine_Aminotransferase +
+                     Aspartate_Aminotransferase + Total_Protiens +
+                     Albumin + Albumin_and_Globulin_Ratio,
+                   data = train, family = "binomial")
+
+# View model summary
+summary(logit_model)
+```
+A: 
+- ALT, Albumin, and Total Proteins are the most informative features in this logistic regression model.
+- Higher ALT and Total Proteins increase the likelihood of liver disease.
+- Higher Albumin decreases it, consistent with its role as a marker of liver function.
+- Some expected predictors (like bilirubin) may be non-significant due to multicollinearity or shared variance with other variables.
+
+
+
+
+Q: How well does the logistic regression model perform in predicting liver disease on unseen data?
+```{r}
+# Predict probabilities on test set
+test$prob <- predict(logit_model, newdata = test, type = "response")
+
+# Classify based on threshold 0.5
+test$pred <- ifelse(test$prob >= 0.5, 1, 0)
+
+# Confusion Matrix
+conf_matrix <- table(Predicted = test$pred, Actual = test$Label)
+print(conf_matrix)
+```
+A:
+True Positives (TP): 114 patients were correctly predicted as having liver disease.
+False Positives (FP): 40 healthy individuals were incorrectly predicted as diseased.
+True Negatives (TN): 10 healthy individuals were correctly predicted as healthy.
+False Negatives (FN): 10 patients were incorrectly predicted as healthy.
+```{r}
+TP <- conf_matrix[2, 2]
+TN <- conf_matrix[1, 1]
+FP <- conf_matrix[2, 1]
+FN <- conf_matrix[1, 2]
+
+sensitivity <- TP / (TP + FN)
+specificity <- TN / (TN + FP)
+accuracy <- (TP + TN) / sum(conf_matrix)
+
+data.frame(Accuracy = accuracy, Sensitivity = sensitivity, Specificity = specificity)
+```
+
+### Interactive dashboard
+```{r}
+library(shiny)
+
+# Load the liver dataset
+df <- read.csv("/users/ali/Desktop/indian_liver_patient.csv")
+df <- na.omit(df)  # Remove missing values
+df$Label <- ifelse(df$Dataset == 1, "Liver Disease", "Healthy")
+
+# UI
+iu <- fluidPage(
+  titlePanel("Liver Disease Analysis (Interactive Dashboard)"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("var", "Select Feature:", 
+                  choices = names(df)[sapply(df, is.numeric)],
+                  selected = "Total_Bilirubin"),
+      radioButtons("group", "Compare By:", 
+                   choices = c("Gender", "Label"),
+                   selected = "Label")
+    ),
+    mainPanel(
+      plotOutput("boxplot"),
+      verbatimTextOutput("summary"),
+      verbatimTextOutput("test_result")
+    )
+  )
+)
+
+# Server
+server <- function(input, output) {
+
+  output$boxplot <- renderPlot({
+    ggplot(df, aes_string(x = input$group, y = input$var, fill = input$group)) +
+      geom_boxplot() +
+      labs(title = paste("Boxplot of", input$var, "by", input$group),
+           x = input$group, y = input$var) +
+      theme_minimal()
+  })
+
+  output$summary <- renderPrint({
+    df %>% group_by(!!sym(input$group)) %>% 
+      summarise(Mean = mean(.data[[input$var]]), 
+                SD = sd(.data[[input$var]]))
+  })
+
+  output$test_result <- renderPrint({
+    g <- input$group
+    v <- input$var
+    result <- wilcox.test(df[[v]] ~ df[[g]])
+    cat("Wilcoxon Rank-Sum Test\n")
+    print(result)
+    cat("\nInterpretation:\n")
+    if (result$p.value < 0.05) {
+      cat("Significant difference between groups (p < 0.05)")
+    } else {
+      cat("No significant difference between groups (p >= 0.05)")
+    }
+  })
+}
+
+# Run the app
+shinyApp(ui = iu, server = server)
+
+```
+
+Q: Does the mean Alkaline Phosphatase level differ significantly between patients with and without liver disease?
+```{r}
+aov_model <- aov(Alkaline_Phosphotase ~ Label, data = df)
+summary(aov_model)
+```
+A:
+- Most liver markers (bilirubin, ALT, AST, ALP, albumin) are significantly associated with liver disease.
+- Albumin shows consistent importance across multiple tests: Wilcoxon, regression, and logistic models.
+- Logistic model has high sensitivity but low specificity.
+- Gender and age affect some markers and should be considered in modeling.
+- Regression and correlation results help confirm biological relationships
+
+
+### Group-wise mean using tapply
+Q: What is the average Alkaline Phosphatase (ALP) level in patients with and without liver disease?
+
+```{r}
+tapply(df$Alkaline_Phosphotase, df$Label, mean, na.rm = TRUE)
+```
+A: 
+Dataset = 1 → Patients with liver disease (Case)
+-> Mean ALP = 319.54 U/L
+Dataset = 2 → Healthy individuals (Control)
+-> Mean ALP = 220.68 U/L
+
+
+
+
+Q: Are there significant differences in liver enzyme levels between patients with and without liver disease, after correcting for multiple comparisons?
+Multiple t-tests for Enzymes and Bonferroni Correction
+We compare the mean levels of three liver enzymes between patients and non-patients using independent t-tests. Since multiple comparisons increase the risk of Type I error, we apply Bonferroni correction.
+
+```{r}
+# Perform t-tests for 3 enzymes
+p1 <- t.test(Alkaline_Phosphotase ~ Dataset, data = df)$p.value
+p2 <- t.test(Alamine_Aminotransferase ~ Dataset, data = df)$p.value
+p3 <- t.test(Aspartate_Aminotransferase ~ Dataset, data = df)$p.value
+
+# Combine p-values
+raw_p <- c(p1, p2, p3)
+
+# Apply Bonferroni correction
+adjusted_p <- p.adjust(raw_p, method = "bonferroni")
+
+# Show raw and adjusted p-values
+data.frame(Enzyme = c("Alkaline_Phosphotase", "Alamine_Aminotransferase", "Aspartate_Aminotransferase"),
+           Raw_P = raw_p,
+           Adjusted_P = adjusted_p)
+```
+A:
+- All three enzymes show highly significant differences between patients and healthy controls even after Bonferroni correction.
+- These findings confirm that ALP, ALT, and AST are strongly associated with liver disease.
+- The correction ensures your results are robust to multiple testing and not false positives.
