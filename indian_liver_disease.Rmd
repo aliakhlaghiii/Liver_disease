@@ -1,6 +1,5 @@
 ---
-title: "R_assignment_Ali"
-Course: "Programming_IV"
+Author: "R_Ali Akhlaghi"
 ---
 Initial Introduction to the Dataset: Indian Liver Patient:
 
