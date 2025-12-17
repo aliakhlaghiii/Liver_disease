@@ -1,5 +1,5 @@
 ---
-Author: "R_Ali Akhlaghi"
+Author: "Ali Akhlaghi"
 ---
 Initial Introduction to the Dataset: Indian Liver Patient:
 
